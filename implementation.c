@@ -255,13 +255,6 @@ static inline __myfs_off_t  __myfs_ptr_to_offset(void *fsptr, void *ptr) {
   return ptr - fsptr;
 } 
 
-int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
-                          uid_t uid, gid_t gid,
-                          const char *path, struct stat *stbuf) {
-  /* STUB */
-  return -1;
-}
-
 /* End of helper functions */
 
 /* Implements an emulation of the stat system call on the filesystem 
@@ -290,7 +283,12 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
    st_mtim
 
 */
-
+int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
+                          uid_t uid, gid_t gid,
+                          const char *path, struct stat *stbuf) {
+  /* STUB */
+  return -1;
+}
 
 /* Implements an emulation of the readdir system call on the filesystem 
    of size fssize pointed to by fsptr. 
