@@ -238,7 +238,29 @@
 
 /* Helper types and functions */
 
-/* YOUR HELPER FUNCTIONS GO HERE */
+/* We cannot use pointers */
+typedef size_t __myfs_off_t;
+
+/* Function to convert offset to a pointer given a pointer
+   that represents start of our memory chunk and the offset
+*/
+static inline void * __myfs_offset_to_ptr(void *fsptr, __myfs_off_t off) {
+  if (off == (__myfs_off_t) 0) return NULL;
+  return fsptr + off;
+} 
+
+/* Function to convert pointer to offset given */
+static inline __myfs_off_t  __myfs_ptr_to_offset(void *fsptr, void *ptr) {
+  if ((ptr - fsptr) <= 0) return -1;
+  return ptr - fsptr;
+} 
+
+int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
+                          uid_t uid, gid_t gid,
+                          const char *path, struct stat *stbuf) {
+  /* STUB */
+  return -1;
+}
 
 /* End of helper functions */
 
@@ -268,12 +290,7 @@
    st_mtim
 
 */
-int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
-                          uid_t uid, gid_t gid,
-                          const char *path, struct stat *stbuf) {
-  /* STUB */
-  return -1;
-}
+
 
 /* Implements an emulation of the readdir system call on the filesystem 
    of size fssize pointed to by fsptr. 
