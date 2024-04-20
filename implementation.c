@@ -236,26 +236,83 @@
 
 */
 
+
+
 /* Helper types and functions */
 
-/* We cannot use pointers */
-typedef size_t __myfs_off_t;
+typedef size_t __myfs_off_t; // We cannot store pointers, only offsets
 
-/* Function to convert offset to a pointer given a pointer
-   that represents start of our memory chunk and the offset
+/* Converts offset to pointer
+   fsptr: pointer to the root of the tree
+   off: offset we want to convert
 */
 static inline void * __myfs_offset_to_ptr(void *fsptr, __myfs_off_t off) {
-  if (off == (__myfs_off_t) 0) return NULL;
+  if (off == (__myfs_off_t) 0) return fsptr;
   return fsptr + off;
 } 
 
-/* Function to convert pointer to offset given */
+/* Converts pointer to offset.
+     fsptr: pointer to the root of the tree
+     ptr: pointer we want to convert
+*/
 static inline __myfs_off_t  __myfs_ptr_to_offset(void *fsptr, void *ptr) {
-  if ((ptr - fsptr) <= 0) return -1;
+  if ((ptr - fsptr) < 0) return -1;
   return ptr - fsptr;
-} 
+}
 
+/* In order to memory management of the memory chunk we have for the
+   filsystem, we defie a header for the memory blocks
+*/
+struct __myfs_memory_block_struct_t {
+  size_t size;
+  size_t user_size;
+  __myfs_off_t next;
+};
+
+typedef struct __myfs_memory_block_struct_t __myfs_memory_block_t;
+
+/* Now we define a filesystem handle */
+struct __myfs_handle_struct_t {
+  uint32_t     magic_number;
+  __myfs_off_t free_memory;
+  __myfs_off_t root_dir;
+  size_t       size;
+};
+
+typedef struct __myfs_handle_struct_t __myfs_handle_s;
+
+/* Magic constant that tell us if the memory chunk has been
+   initialized to a filesystem or not
+*/
+#define MYFS_MAGIC ((uint32_t) 0xcafebabe);
+
+
+/* This is the struct that defines a node in the tree for a directory.
+   It has children but no data.
+*/
+struct __myfs_directory_node_struct_t {
+  char *name;
+  __myfs_off_t *subdirectories_array;
+}
+
+typedef struct __myfs_directory_node_struct_t __myfs_directory_node_t;
+
+
+/* This is the struct that defines a node in the tree or a file.
+   It has data but no children.
+*/
+struct __myfs_file_node_struct_t {
+  char *name;
+  // This points to the beginning of the linked
+  // list that has tha file contents
+  void *data; 
+}
+
+typedef struct __myfs_directory_node_struct_t __myfs_file_node_t;
+  
 /* End of helper functions */
+
+
 
 /* Implements an emulation of the stat system call on the filesystem 
    of size fssize pointed to by fsptr. 
@@ -286,6 +343,7 @@ static inline __myfs_off_t  __myfs_ptr_to_offset(void *fsptr, void *ptr) {
 int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
                           uid_t uid, gid_t gid,
                           const char *path, struct stat *stbuf) {
+  // Of size fssize pointed to by fsptr
   /* STUB */
   return -1;
 }
@@ -328,6 +386,11 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
 */
 int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr,
                           const char *path, char ***namesptr) {
+  // of size fssize pointed to by fsptr
+  // I think it follows the path and then
+  // shows a listing of files and directories
+  
+  
   /* STUB */
   return -1;
 }
