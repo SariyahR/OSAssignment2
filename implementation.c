@@ -240,25 +240,21 @@
 
 /* Helper types and functions */
 
-typedef size_t __myfs_off_t; // We cannot store pointers, only offsets
 
-/* Converts offset to pointer
-   fsptr: pointer to the root of the tree
-   off: offset we want to convert
+/* Magic constant that tell us if the memory chunk has been
+   initialized to a filesystem or not
 */
-static inline void * __myfs_offset_to_ptr(void *fsptr, __myfs_off_t off) {
-  if (off == (__myfs_off_t) 0) return fsptr;
-  return fsptr + off;
-} 
+#define MYFS_MAGIC ((uint32_t) 0xcafebabe)
+#define MAX_LEN_NAME ((size_t) 255)
+#define SIZE_BLOCK ((size_t) 1024)
 
-/* Converts pointer to offset.
-     fsptr: pointer to the root of the tree
-     ptr: pointer we want to convert
+/* We cannot store pointers, only how far something is from
+   the start of the memory region.
 */
-static inline __myfs_off_t  __myfs_ptr_to_offset(void *fsptr, void *ptr) {
-  if ((ptr - fsptr) < 0) return -1;
-  return ptr - fsptr;
-}
+typedef size_t __myfs_off_t;
+
+// ---------------------------------------------------------------------------------
+// STRUCTS
 
 /* In order to memory management of the memory chunk we have for the
    filsystem, we defie a header for the memory blocks
@@ -271,45 +267,171 @@ struct __myfs_memory_block_struct_t {
 
 typedef struct __myfs_memory_block_struct_t __myfs_memory_block_t;
 
-/* Now we define a filesystem handle */
-struct __myfs_handle_struct_t {
-  uint32_t     magic_number;
+/* Now we define a filesystem handler */
+struct __myfs_handler_struct_t {
+  uint32_t magic_number;
   __myfs_off_t free_memory;
   __myfs_off_t root_dir;
-  size_t       size;
+  size_t size;
 };
 
-typedef struct __myfs_handle_struct_t __myfs_handle_s;
-
-/* Magic constant that tell us if the memory chunk has been
-   initialized to a filesystem or not
-*/
-#define MYFS_MAGIC ((uint32_t) 0xcafebabe);
-
+typedef struct __myfs_handler_struct_t __myfs_handler_t;
 
 /* This is the struct that defines a node in the tree for a directory.
    It has children but no data.
 */
 struct __myfs_directory_node_struct_t {
-  char *name;
-  __myfs_off_t *subdirectories_array;
-}
+  size_t number_children;
+  // This is an array of offsets to other directories and files
+  __myfs_off_t children;
+};
 
 typedef struct __myfs_directory_node_struct_t __myfs_directory_node_t;
 
+/* This is the struct that defines a memory block for a file */
+typedef struct __myfs_file_block_struct_t {
+  size_t size;
+  size_t allocated;
+  __myfs_off_t data;
+  __myfs_off_t next_file_block;
+};
+  
+typedef struct __myfs_file_block_struct_t __myfs_file_block_t;  
 
 /* This is the struct that defines a node in the tree or a file.
    It has data but no children.
 */
 struct __myfs_file_node_struct_t {
-  char *name;
-  // This points to the beginning of the linked
-  // list that has tha file contents
-  void *data; 
+  size_t total_size;
+  // This is an offset to the first file_block_t
+  __myfs_off_t first_file_block; 
+};
+
+typedef struct __myfs_file_node_struct_t __myfs_file_node_t;
+
+/* We have nodes for files and for directories.
+   So we define a general node structure to encapsulte both.
+*/
+struct __myfs_node_struct_t {
+  char name[MAX_LEN_NAME + ((size_t)1)]; // Both directories and files have a name
+  char is_file;
+  struct timespec 
+    // times[0] is last access data
+    // times[1] is the last modification date
+    times[2];
+  union {
+    __myfs_directory_node_t directory_node;
+    __myfs_file_node_t file_node;
+  } type;
+};
+
+typedef struct __myfs_node_struct_t __myfs_node_t;
+
+/* This struct represents an entity used for managing memory
+   allocation within the file system
+*/
+struct __myfs_free_memory_block_struct_t {
+  size_t remaining_size;
+  __myfs_off_t next_space;
+};
+  
+typedef struct __myfs_free_memory_block_struct_t __my_fs_free_memory_block_t; 
+
+/* This struct represents a simple linked list structure */
+struct __myfs_linked_list_struct_t {
+  __myfs_off_t first_space;
+};
+
+typedef struct __myfs_linked_list_struct_t __myfs_linked_list_t;
+
+// ---------------------------------------------------------------------------------
+
+/* Converts offset to pointer
+   fsptr: pointer to the root of the tree
+   off: offset we want to convert
+*/
+static inline void * __myfs_offset_to_ptr(void *fsptr, __myfs_off_t off) {
+  void *ptr = fsptr + off;
+  // Check overflow
+  if (ptr < fsptr) {
+    return NULL;
+  }
+  return ptr;
+} 
+
+/* Converts pointer to offset.
+     fsptr: pointer to the root of the tree
+     ptr: pointer we want to convert
+*/
+static inline __myfs_off_t  __myfs_ptr_to_offset(void *fsptr, void *ptr) {
+  if (fsptr > ptr) {
+    return 0;
+  }
+  return ((__myfs_off_t)(ptr - fsptr));
 }
 
-typedef struct __myfs_directory_node_struct_t __myfs_file_node_t;
-  
+/* This function updates the time information for a given node */
+void update_time( __myfs_node_t *node, int set_mod) {
+  if (node == NULL) {
+    return;
+  }
+
+  struct timespec ts;
+
+  if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+    node->times[0] = ts;
+    if (set_mod) {
+      node->times[1] = ts;
+    }
+  }
+}
+
+/* This function checks that the file system is initialized and
+   if not, it initializes it */
+void initialize_file_system(void *fsptr, size_t fssize) {
+  // Typecast fsptr
+  __myfs_handler_t *handler = ((__myfs_handler_t *)fsptr);
+
+  // If the handler's magic number does not match the magic number
+  // constant we have, it means that we need to mount the file system
+  // for the first time
+  if (handler->magic_number != MYFS_MAGIC) {
+    // Set basic handler struct attributes
+    handler->magic_number = MYFS_MAGIC;
+    handler->size = fssize;
+    
+    // The root directory comes right after the handler and it is the
+    // beginning of our file system
+    // Save the offset to the root directory in out handler struct
+    handler->root_dir = sizeof(__myfs_handler_t);
+    __myfs_node_t *root = __myfs_offset_to_ptr(fsptr, handler->root_dir);
+
+    // Set the name of root directory as '/'
+    // It has 4 children
+    memset(root->name, '\0', MAX_LEN_NAME + ((size_t)1)); 
+    memcpy(root->name, "/", strlen("/"));  // memcpy(dst,src,n_bytes)
+    update_time(root, 1);
+    root->is_file = 0; 
+    __myfs_directory_node_t *dir_node = &root->type.directory_node;
+    dir_node->number_children = ((size_t)1);  // The first child space is '..'
+
+    // Root children start after the root node and we first set the header of
+    // the block with the amount of children
+    dir_node->children =
+      __myfs_ptr_to_offset(fsptr, ((void *)(4 * sizeof(__myfs_off_t))) + sizeof(size_t));
+
+    // Set the handler free_memory pointer
+    handler->free_memory = dir_node->children +  (4 * sizeof(__myfs_off_t));
+    __myfs_linked_list_t *linked_list = &((__myfs_handler_t *)fsptr)->free_memory;
+    __my_fs_free_memory_block_t *free_memory_block = (__myfs_offset_to_ptr(fsptr,
+									   linked_list->first_space));
+
+    // Set everything to zero
+    free_memory_block->remaining_size = fssize - handler->free_memory - sizeof(size_t);
+    memset(((void *)free_memory_block) + sizeof(size_t), 0, free_memory_block->remaining_size);
+  }
+}
+
 /* End of helper functions */
 
 
@@ -343,9 +465,7 @@ typedef struct __myfs_directory_node_struct_t __myfs_file_node_t;
 int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
                           uid_t uid, gid_t gid,
                           const char *path, struct stat *stbuf) {
-  // Of size fssize pointed to by fsptr
-  /* STUB */
-  return -1;
+  return 0;
 }
 
 /* Implements an emulation of the readdir system call on the filesystem 
