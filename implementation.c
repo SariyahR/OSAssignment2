@@ -388,7 +388,7 @@ void update_time( __myfs_node_t *node, int set_mod) {
 
 /* This function checks that the file system is initialized and
    if not, it initializes it */
-void initialize_file_system(void *fsptr, size_t fssize) {
+void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
   // Typecast fsptr
   __myfs_handler_t *handler = ((__myfs_handler_t *)fsptr);
 
@@ -428,9 +428,86 @@ void initialize_file_system(void *fsptr, size_t fssize) {
 
     // Set everything to zero
     free_memory_block->remaining_size = fssize - handler->free_memory - sizeof(size_t);
-    memset(((void *)free_memory_block) + sizeof(size_t), 0, free_memory_block->remaining_size);
+    memset(((void *)free_memory_block) + sizeof(size_t), 0,
+	   free_memory_block->remaining_size);
   }
 }
+
+/*
+*/
+__myfs_node_t *get_node(void *fsptr, __myfs_directory_node_t *dir,
+			const char *child) {
+  size_t total_children = dir->number_children;
+  __myfs_off_t *children = __myfs_offset_to_ptr(fsptr, dir->children);
+  __myfs_node_t *node = NULL;
+
+  if (strcmp(child, "..") == 0) {
+    //Go to the parent directory
+    return ((__myfs_node_t *)__myfs_offset_to_ptr(fsptr, children[0]));
+  }
+
+  // We start at i = 1 since the first child is ".." (parent)
+  for (size_t i = ((size_t)1); i < total_children; i++) {
+    node = ((__myfs_node_t *)__myfs_offset_to_ptr(fsptr, children[i]));
+    if (strcmp(node->name, child) == 0) {
+      return node;
+    }
+  }
+  return NULL;
+}
+
+/* This function resolves a path to the corresponding node within the
+   file system, handling different cases such as invalid paths and
+   files not having children.
+*/
+__myfs_node_t *follow_path(void *fsptr, const char *path) {
+  // Path must start at root directory '/'
+  if (*path != '/') {
+    return NULL;
+  }
+
+  // Get root directory
+  __myfs_node_t *node = __myfs_offset_to_ptr(fsptr, ((__myfs_handler_t *)fsptr)->root_dir);
+
+  // If the path is only '/', we return the root dir
+  if (path[1] == '\0') {
+    return node;
+  }
+
+  // Make a mutable copy of the path
+  char *path_copy = strdup(path);
+  if (path_copy == NULL) {
+    // Handle memory allocation failure
+    return NULL;
+  }
+
+  // Tokenize the path using strtok
+  char *token = strtok(path_copy, "/");
+  while (token != NULL) {
+    // Files cannot have children
+    if (node->is_file) {
+      free(path_copy); // Free the memory allocated for the copy
+      return NULL;
+    }
+    // If token is "." we stay on the same directory
+    if (strcmp(token, ".") != 0) {
+      node = get_node(fsptr, &node->type.directory_node, token);
+      // Check that the child was successfully retrieved
+      if (node == NULL) {
+        free(path_copy); // Free the memory allocated for the copy
+        return NULL;
+      }
+    }
+    // Get the next token
+    token = strtok(NULL, "/");
+  }
+
+  // Free the memory allocated for the copy
+  free(path_copy);
+  
+  return node;
+}
+
 
 /* End of helper functions */
 
@@ -465,6 +542,37 @@ void initialize_file_system(void *fsptr, size_t fssize) {
 int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
                           uid_t uid, gid_t gid,
                           const char *path, struct stat *stbuf) {
+  
+  initialize_file_system_if_necessary(fsptr, fssize);
+  
+  __myfs_node_t *node = follow_path(fsptr, path);
+
+  if (node == NULL) {
+    // Invalid path
+    *errnoptr = ENOENT;
+    return -1;
+  }
+
+  stbuf->st_uid = uid;
+  stbuf->st_gid = gid;
+
+  if (node->is_file) {
+    stbuf->st_mode = S_IFREG;
+    stbuf->st_nlink = ((nlink_t)1);
+    stbuf->st_size = ((off_t)node->type.file_node.total_size);
+    stbuf->st_atim = node->times[0];
+    stbuf->st_mtim = node->times[1];
+  } else {
+    stbuf->st_mode = S_IFDIR;
+    __myfs_directory_node_t *dir = &node->type.directory_node;
+    __myfs_off_t *children = __myfs_offset_to_ptr(fsptr, dir->children);
+    stbuf->st_nlink = ((nlink_t)2);
+    for (size_t i = 1; i < dir->number_children; i++) {
+      if (!((__myfs_node_t *)__myfs_offset_to_ptr(fsptr, children[i]))->is_file) {
+        stbuf->st_nlink++;
+      }
+    }
+  } 
   return 0;
 }
 
