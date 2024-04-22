@@ -543,32 +543,37 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
                           uid_t uid, gid_t gid,
                           const char *path, struct stat *stbuf) {
   
+  // Initialize the file system if necessary
   initialize_file_system_if_necessary(fsptr, fssize);
-  
+
+  // Attempt to follow the path within the filesystem
   __myfs_node_t *node = follow_path(fsptr, path);
 
   if (node == NULL) {
     // Invalid path
-    *errnoptr = ENOENT;
+    *errnoptr = ENOENT; // "No such file or directory"
     return -1;
   }
 
-  stbuf->st_uid = uid;
-  stbuf->st_gid = gid;
+  stbuf->st_uid = uid; // Set user ID
+  stbuf->st_gid = gid; // Set group ID
 
   if (node->is_file) {
-    stbuf->st_mode = S_IFREG;
-    stbuf->st_nlink = ((nlink_t)1);
-    stbuf->st_size = ((off_t)node->type.file_node.total_size);
-    stbuf->st_atim = node->times[0];
-    stbuf->st_mtim = node->times[1];
+    // If node represents a file
+    stbuf->st_mode = S_IFREG; // Regular file
+    stbuf->st_nlink = ((nlink_t)1); // One link for files
+    stbuf->st_size = ((off_t)node->type.file_node.total_size); // File size
+    stbuf->st_atim = node->times[0]; // Access time 
+    stbuf->st_mtim = node->times[1]; // Modification time
   } else {
-    stbuf->st_mode = S_IFDIR;
+    // If node represents a directory
+    stbuf->st_mode = S_IFDIR; // Directory
     __myfs_directory_node_t *dir = &node->type.directory_node;
     __myfs_off_t *children = __myfs_offset_to_ptr(fsptr, dir->children);
-    stbuf->st_nlink = ((nlink_t)2);
+    stbuf->st_nlink = ((nlink_t)2); // Two links for directories
     for (size_t i = 1; i < dir->number_children; i++) {
       if (!((__myfs_node_t *)__myfs_offset_to_ptr(fsptr, children[i]))->is_file) {
+	// Increment link count for each directory within this directory
         stbuf->st_nlink++;
       }
     }
