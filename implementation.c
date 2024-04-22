@@ -289,7 +289,7 @@ struct __myfs_directory_node_struct_t {
 typedef struct __myfs_directory_node_struct_t __myfs_directory_node_t;
 
 /* This is the struct that defines a memory block for a file */
-typedef struct __myfs_file_block_struct_t {
+struct __myfs_file_block_struct_t {
   size_t size;
   size_t allocated;
   __myfs_off_t data;
@@ -422,7 +422,7 @@ void initialize_file_system(void *fsptr, size_t fssize) {
 
     // Set the handler free_memory pointer
     handler->free_memory = dir_node->children +  (4 * sizeof(__myfs_off_t));
-    __myfs_linked_list_t *linked_list = &((__myfs_handler_t *)fsptr)->free_memory;
+    __myfs_linked_list_t *linked_list = (__myfs_linked_list_t *)&((__myfs_handler_t *)fsptr)->free_memory;
     __my_fs_free_memory_block_t *free_memory_block = (__myfs_offset_to_ptr(fsptr,
 									   linked_list->first_space));
 
