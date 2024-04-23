@@ -243,6 +243,7 @@
 */
 #define MYFS_MAGIC ((uint32_t) 0xdeadbeef)
 #define MAX_LEN_NAME ((size_t) 255)
+#define MAX_PATH_LEN ((size_t) 4096)
 #define SIZE_BLOCK ((size_t) 1024)
 
 /* We cannot store pointers, only how far something is from
@@ -903,14 +904,18 @@ __myfs_node_t *follow_path(void *fsptr, const char *path) {
 __myfs_node_t *add_node(void *fsptr, const char *path, int *errnoptr, int isfile) {
   
   __myfs_node_t *parent_node = NULL;
-  
+
+  // Make a copy of the path to preserve the original
+  char path_copy[MAX_PATH_LEN]; // Assuming MAX_PATH_LENGTH is defined appropriately
+  strcpy(path_copy, path);
+
   // Find the last occurrence of '/' in the path string
-  char *last_slash = strrchr(path, '/');
+  char *last_slash = strrchr(path_copy, '/');
   if (last_slash != NULL) {
-    // Null-terminate the path at the last slash to remove the last component
+    // Null-terminate the path copy at the last slash to remove the last component
     *last_slash = '\0';
-    // Call follow_path with the modified path (now excluding the last component)
-    parent_node = follow_path(fsptr, path);
+    // Call follow_path with the modified path copy (now excluding the last component)
+    parent_node = follow_path(fsptr, path_copy);
   }
 
   // Check that the file parent exist
@@ -1308,14 +1313,18 @@ int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr,
   initialize_file_system_if_necessary(fsptr, fssize);
 
   __myfs_node_t *parent_node = NULL;
-  
+
+  // Make a copy of the path to preserve the original
+  char path_copy[MAX_PATH_LEN]; // Assuming MAX_PATH_LENGTH is defined appropriately
+  strcpy(path_copy, path);
+
   // Find the last occurrence of '/' in the path string
-  char *last_slash = strrchr(path, '/');
+  char *last_slash = strrchr(path_copy, '/');
   if (last_slash != NULL) {
-    // Null-terminate the path at the last slash to remove the last component
+    // Null-terminate the path copy at the last slash to remove the last component
     *last_slash = '\0';
-    // Call follow_path with the modified path (now excluding the last component)
-    parent_node = follow_path(fsptr, path);
+    // Call follow_path with the modified path copy (now excluding the last component)
+    parent_node = follow_path(fsptr, path_copy);
   }
 
   if (parent_node == NULL) {
