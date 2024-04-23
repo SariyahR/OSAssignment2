@@ -244,7 +244,7 @@
 /* Magic constant that tell us if the memory chunk has been
    initialized to a filesystem or not
 */
-#define MYFS_MAGIC ((uint32_t) 0xcafebabe)
+#define MYFS_MAGIC ((uint32_t) 0xdeadbeef)
 #define MAX_LEN_NAME ((size_t) 255)
 #define SIZE_BLOCK ((size_t) 1024)
 
@@ -363,7 +363,7 @@ static inline void * __myfs_offset_to_ptr(void *fsptr, __myfs_off_t off) {
      fsptr: pointer to the root of the tree
      ptr: pointer we want to convert
 */
-static inline __myfs_off_t  __myfs_ptr_to_offset(void *fsptr, void *ptr) {
+static inline __myfs_off_t __myfs_ptr_to_offset(void *fsptr, void *ptr) {
   if (fsptr > ptr) {
     return 0;
   }
@@ -387,7 +387,8 @@ void update_time( __myfs_node_t *node, int set_mod) {
 }
 
 /* This function checks that the file system is initialized and
-   if not, it initializes it */
+   if not, it initializes it
+*/
 void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
   // Typecast fsptr
   __myfs_handler_t *handler = ((__myfs_handler_t *)fsptr);
@@ -433,8 +434,7 @@ void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
   }
 }
 
-/*
-*/
+/* Retrieves a child node (file or directory) from a directory node. */
 __myfs_node_t *get_node(void *fsptr, __myfs_directory_node_t *dir,
 			const char *child) {
   size_t total_children = dir->number_children;
@@ -508,6 +508,121 @@ __myfs_node_t *follow_path(void *fsptr, const char *path) {
   return node;
 }
 
+/*
+__myfs_node_t *add_node(void *fsptr, const char *path, int *errnoptr, int isfile) {
+  // Call path solver without the last node name because that is the file name
+  // if valid path name is given
+  node_t *parent_node = path_solver(fsptr, path);
+
+  // Check that the file parent exist
+  if (parent_node == NULL) {
+    *errnoptr = ENOENT;
+    return NULL;
+  }
+
+  // Check that the node returned is a directory
+  if (parent_node->is_file) {
+    *errnoptr = ENOTDIR;
+    return NULL;
+  }
+
+  // Get directory from node
+  directory_t *dict = &parent_node->type.directory;
+
+  // Get last token which have the filename
+  unsigned long len;
+  char *new_node_name = get_last_token(path, &len);
+
+  // Check that the parent doesn't contain a node with the same name as the one
+  // we are about to create
+  if (get_node(fsptr, dict, new_node_name) != NULL) {
+    *errnoptr = EEXIST;
+    return NULL;
+  }
+
+  if (len == 0) {
+    *errnoptr = ENOENT;
+    return NULL;
+  }
+
+  if (len > NAME_MAX_LEN) {
+    *errnoptr = ENAMETOOLONG;
+    return NULL;
+  }
+
+  __myfs_off_t *children = off_to_ptr(fsptr, dict->children);
+  AllocateFrom *block = (((void *)children) - sizeof(size_t));
+
+  // Make the node and put it in the directory child list
+  //  First check if the directory list have free places to added nodes to
+  //   Amount of memory allocated doesn't count the sizeof(size_t) as withing
+  //   the available size
+  size_t max_children = (block->remaining) / sizeof(__myfs_off_t);
+  size_t ask_size;
+  if (max_children == dict->number_children) {
+    ask_size = block->remaining * 2;
+    // Make more space for another children
+    void *new_children = __realloc_impl(fsptr, children, &ask_size);
+
+    //__realloc_impl() always returns a new pointer if ask_size == 0, otherwise
+    //we don't have enough space in memory
+    if (ask_size != 0) {
+      *errnoptr = ENOSPC;
+      return NULL;
+    }
+
+    // Update offset to access the children
+    dict->children = ptr_to_off(fsptr, new_children);
+    children = ((__myfs_off_t *)new_children);
+  }
+
+  ask_size = sizeof(node_t);
+  node_t *new_node = (node_t *)__malloc_impl(fsptr, NULL, &ask_size);
+  if ((ask_size != 0) || (new_node == NULL)) {
+    __free_impl(fsptr, new_node);
+    *errnoptr = ENOSPC;
+    return NULL;
+  }
+  memset(new_node->name, '\0',
+         NAME_MAX_LEN + ((size_t)1));  // File all name characters to '\0'
+  memcpy(new_node->name, new_node_name,
+         len);  // Copy given name into node->name, memcpy(dst,src,n_bytes)
+  update_time(new_node, 1);
+
+  // Add file node to directory children
+  children[dict->number_children] = ptr_to_off(fsptr, new_node);
+  dict->number_children++;
+  update_time(parent_node, 1);
+
+  if (isfile) {
+    // Make a node for the file with size of 0
+    new_node->is_file = 1;
+    file_t *file = &new_node->type.file;
+    file->total_size = 0;
+    file->first_file_block = 0;
+  } else {
+    // Make a node for the file with size of 0
+    new_node->is_file = 0;
+    dict = &new_node->type.directory;
+    dict->number_children =
+        ((size_t)1);  // We use the first child space for '..'
+
+    // Call __malloc_impl() to get enough space for 4 children
+    ask_size = 4 * sizeof(__myfs_off_t);
+    __myfs_off_t *ptr = ((__myfs_off_t *)__malloc_impl(fsptr, NULL, &ask_size));
+    if ((ask_size != 0) || (ptr == NULL)) {
+      __free_impl(fsptr, ptr);
+      *errnoptr = ENOSPC;
+      return NULL;
+    }
+    // Save the offset to get to the children
+    dict->children = ptr_to_off(fsptr, ptr);
+    // Set first children to point to its parent
+    *ptr = ptr_to_off(fsptr, parent_node);
+  }
+
+  return new_node;
+} */
 
 /* End of helper functions */
 
@@ -619,13 +734,54 @@ int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
 */
 int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr,
                           const char *path, char ***namesptr) {
-  // of size fssize pointed to by fsptr
-  // I think it follows the path and then
-  // shows a listing of files and directories
   
-  
-  /* STUB */
-  return -1;
+  // Initialize the file system if necessary
+  initialize_file_system_if_necessary(fsptr, fssize);
+
+  // Attempt to follow the path within the filesystem
+  __myfs_node_t *node = follow_path(fsptr, path);
+
+  if (node == NULL) {
+    // Invalid path 
+    *errnoptr = ENOENT; // "No such file or directory"
+    return -1;
+  }
+
+  if (node->is_file) {
+    *errnoptr = ENOTDIR; // "Not a directory"
+    return -1;
+  }
+
+  // Check that directory have more than 2 nodes "." and ".." inside 
+  __myfs_directory_node_t *dir = &node->type.directory_node;
+  if (dir->number_children == 1) {
+    return 0;
+  }
+
+  size_t n_children = dir->number_children;
+  // Allocate space for all children, except "." and ".."
+  void **ptr = (void **)calloc(n_children - ((size_t)1), sizeof(char *));
+  __myfs_off_t *children = __myfs_offset_to_ptr(fsptr, dir->children);
+
+  // Check that calloc call was successful
+  if (ptr == NULL) {
+    *errnoptr = EINVAL;
+    return -1;
+  }
+
+  char **names = ((char **)ptr);
+  // Fill array of names
+  size_t len;
+  for (size_t i = ((size_t)1); i < n_children; i++) {
+    node = ((__myfs_node_t *)__myfs_offset_to_ptr(fsptr, children[i]));
+    len = strlen(node->name);
+    names[i - 1] = (char *)malloc(len + 1);
+    strcpy(names[i - 1], node->name);  // strcpy(dst,src)
+    names[i - 1][len] = '\0';
+  }
+
+  *namesptr = names;
+  return ((int)(n_children - 1));
 }
 
 /* Implements an emulation of the mknod system call for regular files
@@ -647,8 +803,19 @@ int __myfs_readdir_implem(void *fsptr, size_t fssize, int *errnoptr,
 */
 int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr,
                         const char *path) {
-  /* STUB */
-  return -1;
+  /*
+  // Initialize the file system if necessary
+  initialize_file_system_if_necessary(fsptr, fssize);
+
+  // Make a node of type file
+  __myfs_node_t *node = add_node(fsptr, path, errnoptr, 1);
+
+  if (node == NULL) {
+    // Node was not created successfully
+    return -1;
+    } */
+
+  return 0;
 }
 
 /* Implements an emulation of the unlink system call for regular files
