@@ -396,7 +396,8 @@ void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
   // If the handler's magic number does not match the magic number
   // constant we have, it means that we need to mount the file system
   // for the first time
-  if (handler->magic_number != MYFS_MAGIC) {
+  if (handler->magic_number == MYFS_MAGIC) {
+    printf("Inside no magic number if statement");
     // Set basic handler struct attributes
     handler->magic_number = MYFS_MAGIC;
     handler->size = fssize;
@@ -432,6 +433,7 @@ void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
     memset(((void *)free_memory_block) + sizeof(size_t), 0,
 	   free_memory_block->remaining_size);
   }
+  printf("After print statement");
 }
 
 /* Retrieves a child node (file or directory) from a directory node. */
