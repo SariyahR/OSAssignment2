@@ -370,7 +370,6 @@ static inline __myfs_off_t __myfs_ptr_to_offset(void *fsptr, void *ptr) {
 
 /* This function updates the time information for a given node */
 void update_time( __myfs_node_t *node, int set_mod) {
-  printf("Hellooooooo 3");
   if (node == NULL) {
     return;
   }
@@ -399,7 +398,6 @@ void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
   // constant we have, it means that we need to mount the file system
   // for the first time
   if (handler->magic_number == MYFS_MAGIC) {
-    printf("Inside no magic number if statement");
     // Set basic handler struct attributes
     handler->magic_number = MYFS_MAGIC;
     handler->size = fssize;
@@ -435,7 +433,6 @@ void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
     memset(((void *)free_memory_block) + sizeof(size_t), 0,
 	   free_memory_block->remaining_size);
   }
-  printf("After print statement");
 }
 
 /* Retrieves a child node (file or directory) from a directory node. */
@@ -661,7 +658,6 @@ __myfs_node_t *add_node(void *fsptr, const char *path, int *errnoptr, int isfile
 int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
                           uid_t uid, gid_t gid,
                           const char *path, struct stat *stbuf) {
-  printf("Hellooooooo 1");
   
   // Initialize the file system if necessary
   initialize_file_system_if_necessary(fsptr, fssize);
