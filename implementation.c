@@ -378,8 +378,10 @@ void update_time( __myfs_node_t *node, int set_mod) {
   struct timespec ts;
 
   if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+    printf("Right before setting times[0]");
     node->times[0] = ts;
     if (set_mod) {
+      printf("Right before setting times[1]");
       node->times[1] = ts;
     }
   }
