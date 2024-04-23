@@ -40,9 +40,6 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
-// headers we added
-#include <fuse/fuse.h>
-
 
 /* The filesystem you implement must support all the 13 operations
    stubbed out below. There need not be support for access rights,
@@ -377,10 +374,8 @@ void update_time( __myfs_node_t *node, int set_mod) {
   struct timespec ts;
 
   if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-    printf("Right before setting times[0]");
     node->times[0] = ts;
     if (set_mod) {
-      printf("Right before setting times[1]");
       node->times[1] = ts;
     }
   }
@@ -390,14 +385,13 @@ void update_time( __myfs_node_t *node, int set_mod) {
    if not, it initializes it
 */
 void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
-  printf("Hellooooooo 2");
   // Typecast fsptr
   __myfs_handler_t *handler = ((__myfs_handler_t *)fsptr);
 
   // If the handler's magic number does not match the magic number
   // constant we have, it means that we need to mount the file system
   // for the first time
-  if (handler->magic_number == MYFS_MAGIC) {
+  if (handler->magic_number != MYFS_MAGIC) {
     // Set basic handler struct attributes
     handler->magic_number = MYFS_MAGIC;
     handler->size = fssize;
