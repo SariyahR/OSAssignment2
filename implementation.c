@@ -316,8 +316,6 @@ struct __myfs_node_struct_t {
   char name[MAX_LEN_NAME + ((size_t)1)]; // Both directories and files have a name
   char is_file;
   struct timespec 
-    // times[0] is last access data
-    // times[1] is the last modification date
     times[2];
   union {
     __myfs_directory_node_t directory_node;
@@ -372,6 +370,7 @@ static inline __myfs_off_t __myfs_ptr_to_offset(void *fsptr, void *ptr) {
 
 /* This function updates the time information for a given node */
 void update_time( __myfs_node_t *node, int set_mod) {
+  printf("Hellooooooo 3");
   if (node == NULL) {
     return;
   }
@@ -390,6 +389,7 @@ void update_time( __myfs_node_t *node, int set_mod) {
    if not, it initializes it
 */
 void initialize_file_system_if_necessary(void *fsptr, size_t fssize) {
+  printf("Hellooooooo 2");
   // Typecast fsptr
   __myfs_handler_t *handler = ((__myfs_handler_t *)fsptr);
 
@@ -657,6 +657,7 @@ __myfs_node_t *add_node(void *fsptr, const char *path, int *errnoptr, int isfile
 int __myfs_getattr_implem(void *fsptr, size_t fssize, int *errnoptr,
                           uid_t uid, gid_t gid,
                           const char *path, struct stat *stbuf) {
+  printf("Hellooooooo 1");
   
   // Initialize the file system if necessary
   initialize_file_system_if_necessary(fsptr, fssize);
