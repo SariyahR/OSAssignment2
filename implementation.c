@@ -263,6 +263,7 @@ struct __myfs_handler_struct_t {
 
 typedef struct __myfs_handler_struct_t __myfs_handler_t;
 
+
 /* This is the struct that defines a node in the tree for a directory.
    It has children but no data.
 */
@@ -274,6 +275,7 @@ struct __myfs_directory_node_struct_t {
 
 typedef struct __myfs_directory_node_struct_t __myfs_directory_node_t;
 
+
 /* This is the struct that defines a memory block for a file */
 struct __myfs_file_block_struct_t {
   size_t size;
@@ -282,7 +284,8 @@ struct __myfs_file_block_struct_t {
   __myfs_off_t next_file_block;
 };
   
-typedef struct __myfs_file_block_struct_t __myfs_file_block_t;  
+typedef struct __myfs_file_block_struct_t __myfs_file_block_t;
+
 
 /* This is the struct that defines a node in the tree or a file.
    It has data but no children.
@@ -294,6 +297,7 @@ struct __myfs_file_node_struct_t {
 };
 
 typedef struct __myfs_file_node_struct_t __myfs_file_node_t;
+
 
 /* We have nodes for files and for directories.
    So we define a general node structure to encapsulte both.
@@ -311,6 +315,7 @@ struct __myfs_node_struct_t {
 
 typedef struct __myfs_node_struct_t __myfs_node_t;
 
+
 /* This struct represents an entity used for managing memory
    allocation within the file system
 */
@@ -319,7 +324,8 @@ struct __myfs_free_memory_block_struct_t {
   __myfs_off_t next_space;
 };
   
-typedef struct __myfs_free_memory_block_struct_t __myfs_free_memory_block_t; 
+typedef struct __myfs_free_memory_block_struct_t __myfs_free_memory_block_t;
+
 
 /* This struct represents a simple linked list structure */
 struct __myfs_linked_list_struct_t {
@@ -396,7 +402,7 @@ char *get_last_token(const char *path, unsigned long *token_len) {
 // MEMORY ALLOCATION FUNCTIONS
 
 
-/* Make an AllocateFrom item using length and start and add it to the list which
+/* Make an memory block item using length and start and add it to the list which
  * does it in ascending order */
 void add_allocation_space(void *fsptr,  __myfs_linked_list_t *LL, __myfs_free_memory_block_t *alloc) {
   __myfs_free_memory_block_t *temp;
@@ -922,7 +928,7 @@ __myfs_node_t *add_node(void *fsptr, const char *path, int *errnoptr, int isfile
   // Get directory from node
   __myfs_directory_node_t *dir = &parent_node->type.directory_node;
 
-  // Get last token which have the filename
+  // Get last token which has the filename
   unsigned long len;
   char *new_node_name = get_last_token(path, &len);
 
@@ -1016,6 +1022,78 @@ __myfs_node_t *add_node(void *fsptr, const char *path, int *errnoptr, int isfile
 
   return new_node;
 } 
+
+
+void free_file_info(void *fsptr, __myfs_file_node_t *file) {
+  
+  __myfs_file_block_t *block = __myfs_offset_to_ptr(fsptr, file->first_file_block);
+  __myfs_file_block_t *next;
+
+  // Iterate over all blocks until a block is pointing to fsptr meaning that we
+  // are done
+  while (((void *)block) != fsptr) {
+    // Free block data information
+    __free_impl(fsptr, __myfs_offset_to_ptr(fsptr, block->data));
+    // Save next block pointer
+    next = __myfs_offset_to_ptr(fsptr, block->next_file_block);
+    // Free current block
+    __free_impl(fsptr, block);
+    // Update current block with the next file_t for the next iteration
+    block = next;
+  }
+}
+
+void remove_node(void *fsptr, __myfs_directory_node_t *dir, __myfs_node_t *node) {
+  // Iterate over the files in dict and remove the file_node which we assume to
+  // be already free by calling free_file_info with &file_node->type.file
+  size_t n_children = dir->number_children;
+  __myfs_off_t *children = __myfs_offset_to_ptr(fsptr, dir->children);
+  size_t index;
+  __myfs_off_t node_off = __myfs_ptr_to_offset(fsptr, node);
+
+  // Find the index where the node is at
+  for (index = 1; index < n_children; index++) {
+    if (children[index] == node_off) {
+      break;
+    }
+  }
+
+  // File must be at index
+  __free_impl(fsptr, node);
+
+  // Move the remaining nodes one to the left to cover the node remove
+  for (; index < n_children - 1; index++) {
+    children[index] = children[index + 1];
+  }
+
+  // Set the last to have offset of zero and update number of children
+  children[index] = ((__myfs_off_t)0);
+  dir->number_children--;
+
+  // See if we can free some memory by half while keeping at least 4 offsets
+  size_t new_n_children =
+      (*((size_t *)children) - 1) /
+      sizeof(__myfs_off_t);  // Get the maximum number of children offset
+  new_n_children <<= 1;      // Divide the maximum number by two
+
+  // Check if the new number of children is greater or equal than the current
+  // number, check that we always have 4 or more children spaces
+  //  and that we can actually made an AllocateFrom object before making it
+  if ((new_n_children >= dir->number_children) &&
+      (new_n_children * sizeof(__myfs_off_t) >= sizeof(__myfs_free_memory_block_t)) &&
+      (new_n_children >= 4)) {
+    // Every condition is meet, so we proceed to make an AlloacteFrom object and
+    // sent it to be added into the linked list of free blocks
+    __myfs_free_memory_block_t *temp = ((__myfs_free_memory_block_t *)&children[new_n_children]);
+    temp->remaining_size = new_n_children * sizeof(__myfs_off_t) - sizeof(size_t);
+    temp->next_space = 0;
+    __free_impl(fsptr, temp);
+
+    // Update the new size of the current directory children array of offsets
+    size_t *new_size = (((size_t *)children) - 1);
+    *new_size -= (temp->remaining_size - sizeof(size_t));
+  }
+}
 
 /* End of helper functions */
 
@@ -1225,8 +1303,65 @@ int __myfs_mknod_implem(void *fsptr, size_t fssize, int *errnoptr,
 */
 int __myfs_unlink_implem(void *fsptr, size_t fssize, int *errnoptr,
                         const char *path) {
-  /* STUB */
-  return -1;
+    
+  // Initialize the file system if necessary
+  initialize_file_system_if_necessary(fsptr, fssize);
+
+  __myfs_node_t *parent_node = NULL;
+  
+  // Find the last occurrence of '/' in the path string
+  char *last_slash = strrchr(path, '/');
+  if (last_slash != NULL) {
+    // Null-terminate the path at the last slash to remove the last component
+    *last_slash = '\0';
+    // Call follow_path with the modified path (now excluding the last component)
+    parent_node = follow_path(fsptr, path);
+  }
+
+  if (parent_node == NULL) {
+    // Parent file does not exist
+    *errnoptr = ENOENT;  // "No such file or directory"
+    return -1;
+  }
+
+  // Check that the node returned is a directory
+  if (parent_node->is_file) {
+    *errnoptr = ENOTDIR;
+    return -1; // "Not a directory"
+  }
+
+  // Get directory from node
+  __myfs_directory_node_t *dir = &parent_node->type.directory_node;
+
+  // Get last token which has the filename
+  unsigned long len;
+  char *filename = get_last_token(path, &len);
+
+  // Check that the parent don't contain a node with the same name
+  // as the one we are about to create
+  __myfs_node_t *file_node = get_node(fsptr, dir, filename);
+
+  if (file_node == NULL) {
+    *errnoptr = ENOENT;
+    return -1;
+  }
+  // Check that file_node is actually a file
+  if (!file_node->is_file) {
+    // Path given lead to a directory not a file
+    *errnoptr = EISDIR;
+    return -1;
+  }
+
+  // Free file information
+  __myfs_file_node_t *file = &file_node->type.file_node;
+  if (file->total_size != 0) {
+    free_file_info(fsptr, file);
+  }
+
+  // Remove file_node from parent directory
+  remove_node(fsptr, dir, file_node);
+
+  return 0;
 }
 
 /* Implements an emulation of the rmdir system call on the filesystem 
